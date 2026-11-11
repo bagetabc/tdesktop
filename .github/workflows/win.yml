@@ -185,7 +185,7 @@ jobs:
       - name: Dependencies 4/5 - crash reporting and Qt
         timeout-minutes: 120
         run: |
-          %TBUILD%\%REPO_NAME%\Telegram\build\prepare\win.bat skip-release cache-selected silent breakpad crashpad qt6_windows7 tg_angle qt_6.11.2
+          %TBUILD%\%REPO_NAME%\Telegram\build\prepare\win.bat skip-release cache-selected silent breakpad qt6_windows7 tg_angle qt_6.11.2
 
       - name: Dependencies 5/5 - Telegram-specific libraries
         timeout-minutes: 120
