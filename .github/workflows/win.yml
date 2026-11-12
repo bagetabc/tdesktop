@@ -127,7 +127,7 @@ jobs:
         with:
           arch: ${{ matrix.arch }}
           sdk: ${{ env.SDK }}
-          toolset: ${{ case(matrix.arch == 'arm64', '', '14.44') }}
+          toolset: 14.44
 
       - name: NuGet sources.
         run: |
@@ -263,13 +263,16 @@ jobs:
 
           cmake --build ..\out --config Debug --parallel
 
-      - name: Move artifact.
+      - name: Verify and collect Telegram.exe.
         if: (env.UPLOAD_ARTIFACT == 'true') || (github.ref == 'refs/heads/nightly')
         run: |
           set OUT=%TBUILD%\%REPO_NAME%\out\Debug
+          if not exist "%OUT%\Telegram.exe" (
+            echo [ERROR] Telegram.exe was not produced.
+            exit /b 1
+          )
           mkdir artifact
-          move %OUT%\Telegram.exe artifact/
-          move %OUT%\Updater.exe artifact/
+          copy /Y "%OUT%\Telegram.exe" artifact\Telegram.exe
       - uses: actions/upload-artifact@v7
         name: Upload artifact.
         if: (env.UPLOAD_ARTIFACT == 'true') || (github.ref == 'refs/heads/nightly')
@@ -278,71 +281,3 @@ jobs:
           path: artifact\
           retention-days: 1
 
-
-  # Package only the executable produced by the Windows job in this exact run.
-  package:
-    name: Package Windows x64 ZIP
-    if: github.event_name == 'push' && github.ref == 'refs/heads/feature/local-web-admin'
-    needs: windows
-    permissions:
-      contents: write
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout exact build commit
-        uses: actions/checkout@v7
-        with:
-          ref: ${{ github.sha }}
-
-      - name: Download Telegram x64 artifact from this run
-        uses: actions/download-artifact@v4
-        with:
-          name: Telegram x64
-          path: package/Telegram
-
-      - name: Verify executable and assemble ZIP
-        shell: bash
-        run: |
-          set -euo pipefail
-          test -s package/Telegram/Telegram.exe
-          mkdir -p package/local-admin
-          cp local-admin/server.py local-admin/index.html local-admin/account.html local-admin/README.md local-admin/requirements.txt package/local-admin/
-          cat > package/local-admin/start-windows.bat <<'BAT'
-          @echo off
-          cd /d "%~dp0"
-          py -3 server.py
-          pause
-          BAT
-          cat > package/local-admin/start-with-password.bat <<'BAT'
-          @echo off
-          set /p ADMIN_PASSWORD=Enter admin password:
-          cd /d "%~dp0"
-          py -3 server.py
-          pause
-          BAT
-          cat > package/local-admin/open-admin.bat <<'BAT'
-          @echo off
-          start "" http://127.0.0.1:8765/
-          BAT
-          cat > package/local-admin/open-account.bat <<'BAT'
-          @echo off
-          start "" http://127.0.0.1:8765/account
-          BAT
-          (cd package && zip -qr ../LocalAssets-Windows-x64.zip .)
-          test -s LocalAssets-Windows-x64.zip
-
-      - name: Publish or update commit-specific release
-        env:
-          GH_TOKEN: ${{ github.token }}
-          REPOSITORY: ${{ github.repository }}
-          BUILD_SHA: ${{ github.sha }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          TAG="local-assets-${BUILD_SHA:0:12}"
-          NOTES="Windows x64 Telegram Desktop build and local-only admin panel. The local Stars balance, usernames and +888 identifiers are independent assets, not official Telegram services."
-          printf '%s\n' "$NOTES" > release-notes.txt
-          if gh release view "$TAG" --repo "$REPOSITORY" >/dev/null 2>&1; then
-            gh release upload "$TAG" LocalAssets-Windows-x64.zip --clobber --repo "$REPOSITORY"
-          else
-            gh release create "$TAG" LocalAssets-Windows-x64.zip --repo "$REPOSITORY" --title "Local Assets Windows x64" --notes-file release-notes.txt
-          fi
